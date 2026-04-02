@@ -1,0 +1,54 @@
+# ============================
+# Environment variables
+# ============================
+.env
+
+# ============================
+# Pyrogram session files
+# ============================
+*.session
+*.session-journal
+
+# ============================
+# Python bytecode / cache
+# ============================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ============================
+# Log files
+# ============================
+*.log
+filesharingbot.txt
+
+# ============================
+# Virtual environment
+# ============================
+venv/
+env/
+.venv/
+.env.local
+
+# ============================
+# IDE / Editor
+# ============================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ============================
+# OS generated files
+# ============================
+.DS_Store
+Thumbs.db
+
+# ============================
+# Distribution / Build
+# ============================
+dist/
+build/
+*.egg-info/
