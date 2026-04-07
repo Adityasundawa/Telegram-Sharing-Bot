@@ -57,7 +57,19 @@ FORCE_SUB_CHANNEL = [
 ]
 
 TG_BOT_WORKERS = int(os.environ.get("TG_BOT_WORKERS", "4"))
+DAILY_LIMIT_NEW_USER = int(os.environ.get("DAILY_LIMIT_NEW_USER", "3"))
 
+# Jumlah limit file yang di-reset setiap hari untuk user NON-PREMIUM
+DAILY_LIMIT_RESET = int(os.environ.get("DAILY_LIMIT_RESET", "5"))
+
+# Link upgrade premium (tombol saat limit habis)
+PREMIUM_LINK = os.environ.get("PREMIUM_LINK", "https://numpang.xyz/bOEtl5")
+
+# Pesan saat daily limit habis (support HTML, fillings: {first}, {limit})
+DAILY_LIMIT_MSG = os.environ.get(
+    "DAILY_LIMIT_MSG",
+    "Ups! Batas harian Anda ({limit} file/hari) sudah habis.\n\nJangan khawatir, Anda bisa lanjut lagi besok.\nSilakan kembali besok atau upgrade ke <b>Premium</b> untuk akses tanpa batas!"
+)
 # Start message
 START_MSG = os.environ.get(
     "START_MESSAGE",

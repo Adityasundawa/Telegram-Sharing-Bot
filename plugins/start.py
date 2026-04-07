@@ -9,10 +9,16 @@ from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, 
 from pyrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated
 
 from bot import Bot
-# <-- MODIFIKASI: Impor FORCE_SUB_CHANNEL, bukan hanya FORCE_MSG
-from config import ADMINS, FORCE_SUB_CHANNEL, FORCE_MSG, START_MSG, CUSTOM_CAPTION, DISABLE_CHANNEL_BUTTON, PROTECT_CONTENT
+from config import (
+    ADMINS, FORCE_SUB_CHANNEL, FORCE_MSG, START_MSG,
+    CUSTOM_CAPTION, DISABLE_CHANNEL_BUTTON, PROTECT_CONTENT,
+    DAILY_LIMIT_MSG, PREMIUM_LINK, DAILY_LIMIT_RESET
+)
 from helper_func import subscribed, encode, decode, get_messages
-from database.database import add_user, decrease_daily_limit, del_user, find_user, full_userbase, present_user, reset_daily_limit, update_new_user
+from database.database import (
+    add_user, decrease_daily_limit, del_user, find_user,
+    full_userbase, present_user, reset_daily_limit, update_new_user
+)
 
 
 @Bot.on_message(filters.command('start') & filters.private & subscribed)
@@ -24,17 +30,17 @@ async def start_command(client: Client, message: Message):
             await add_user(id, username)
         except:
             pass
-    
+
     text = message.text
     if len(text) > 7:
         try:
             base64_string = text.split(" ", 1)[1]
         except:
             return
-        
+
         string = await decode(base64_string)
         argument = string.split("-")
-        
+
         if len(argument) == 3:
             try:
                 start = int(int(argument[1]) / abs(client.db_channel.id))
@@ -61,9 +67,7 @@ async def start_command(client: Client, message: Message):
             return
 
         temp_msg = await message.reply("Mohon tunggu sebentar...")
-        
-        # <-- PERBAIKAN 1: Inisialisasi variabel messages
-        messages = None 
+        messages = None
 
         try:
             res = await find_user(id)
@@ -74,35 +78,53 @@ async def start_command(client: Client, message: Message):
             daily_limit = res["daily_limit"]
             new_user = res["new_user"]
 
-            if user_premium == "no":
+            # ============================================
+            # LOGIKA PREMIUM:
+            #   "yes" = premium → BEBAS tanpa limit
+            #   "no"  = non-premium → ADA daily limit
+            # ============================================
+
+            if user_premium == "yes":
+                # User PREMIUM → akses bebas tanpa batas
                 messages = await get_messages(client, ids)
+
             else:
-                if new_user == "no":
+                # User NON-PREMIUM → cek daily limit
+                if new_user == "yes":
+                    # User baru pertama kali → kasih akses + tandai bukan new user lagi
                     messages = await get_messages(client, ids)
                     await update_new_user(id)
+
+                elif last_access_date < current_date:
+                    # Hari baru → reset daily limit
+                    messages = await get_messages(client, ids)
+                    await reset_daily_limit(id)
+
+                elif daily_limit <= 0:
+                    # Limit habis → tampilkan pesan + tombol premium
+                    premium_url = PREMIUM_LINK if PREMIUM_LINK else f"https://t.me/{client.username}"
+                    buttons = InlineKeyboardMarkup(
+                        [
+                            [
+                                InlineKeyboardButton("⭐ UPGRADE PREMIUM", url=premium_url)
+                            ],
+                            [
+                                InlineKeyboardButton("🔄 Coba Lagi Besok", callback_data="close")
+                            ]
+                        ]
+                    )
+                    await temp_msg.edit_text(
+                        text=DAILY_LIMIT_MSG.format(
+                            first=message.from_user.first_name,
+                            limit=DAILY_LIMIT_RESET
+                        ),
+                        reply_markup=buttons
+                    )
+                    return
+
                 else:
-                    if last_access_date < current_date:
-                        messages = await get_messages(client, ids)
-                        await reset_daily_limit(id)
-                    else:
-                        if daily_limit <= 0:
-                            buttons = InlineKeyboardMarkup(
-                                [
-                                    [
-                                        InlineKeyboardButton("PREMIUM DI SINI ", url="https://numpang.xyz/bOEtl5")
-    
-                                    ]
-                                ]
-                            )
-                            # <-- PERBAIKAN 2: Edit pesan, bukan kirim baru
-                            await temp_msg.edit_text(
-                                text='''Ups! Batas harian Anda sudah habis. \n\n Jangan khawatir, Anda bisa lanjut lagi Besok \n\n Silakan kembali besok atau upgrade ke premium sekarang untuk akses tanpa batas!.\n\n \n\n KLIK LINK DIBAWAH INI UNTUK BISA JADI PREMIUM ''',
-                                reply_markup=buttons
-                            )
-                            # <-- PERBAIKAN 3: Hentikan fungsi di sini!
-                            return
-                        else:
-                            messages = await get_messages(client, ids)
+                    # Masih ada limit → kasih akses
+                    messages = await get_messages(client, ids)
 
         except Exception as e:
             await temp_msg.edit_text(f"Terjadi kesalahan: {str(e)}")
@@ -112,19 +134,21 @@ async def start_command(client: Client, message: Message):
 
         if messages:
             for msg in messages:
-                if msg.video or msg.document or msg.photo:
-                    await decrease_daily_limit(id)
-                
+                # Kurangi limit hanya untuk user NON-PREMIUM
+                if user_premium != "yes":
+                    if msg.video or msg.document or msg.photo:
+                        await decrease_daily_limit(id)
+
                 caption = ""
                 if msg.caption:
                     caption = msg.caption.html
-                
+
                 if CUSTOM_CAPTION and msg.document:
                     caption = CUSTOM_CAPTION.format(
                         previouscaption=caption, filename=msg.document.file_name)
 
                 reply_markup = None if DISABLE_CHANNEL_BUTTON else msg.reply_markup
-                
+
                 try:
                     await msg.copy(
                         chat_id=message.from_user.id, caption=caption, parse_mode=ParseMode.HTML,
@@ -163,30 +187,25 @@ async def start_command(client: Client, message: Message):
         )
         return
 
+
 # =========================================================================================================
 #                   FUNGSI UNTUK FORCE SUBSCRIBE (YANG BELUM JOIN)
 # =========================================================================================================
 
 @Bot.on_message(filters.command('start') & filters.private)
 async def not_joined(client: Client, message: Message):
-    # <-- MODIFIKASI TOTAL DIMULAI DI SINI
     buttons = []
-    # Lakukan perulangan untuk setiap channel di list FORCE_SUB_CHANNEL dari config.py
     for channel_id in FORCE_SUB_CHANNEL:
         try:
-            # Dapatkan detail channel untuk mengambil judul dan membuat link invite
             chat = await client.get_chat(channel_id)
             invite_link = await client.export_chat_invite_link(channel_id)
-            # Tambahkan tombol untuk setiap channel
             buttons.append(
                 [InlineKeyboardButton(f"Join {chat.title}", url=invite_link)]
             )
         except Exception as e:
             print(f"Error saat membuat tombol untuk channel {channel_id}: {e}")
-            # Jika bot tidak admin atau ID salah, channel ini akan dilewati
             pass
 
-    # Tambahkan tombol "Try Again" seperti sebelumnya
     try:
         buttons.append(
             [
@@ -197,10 +216,8 @@ async def not_joined(client: Client, message: Message):
             ]
         )
     except IndexError:
-        # Jika /start biasa tanpa link, tidak perlu tombol Try Again dengan link
         pass
-    
-    # Kirim pesan dengan semua tombol yang sudah dibuat
+
     if buttons:
         await message.reply(
             text=FORCE_MSG.format(
@@ -214,9 +231,8 @@ async def not_joined(client: Client, message: Message):
             quote=True,
             disable_web_page_preview=True
         )
-    # <-- MODIFIKASI TOTAL BERAKHIR DI SINI
 
-# Sisanya adalah kode admin, tidak perlu diubah.
+
 # =========================================================================================================
 
 @Bot.on_message(filters.command('users') & filters.private & filters.user(ADMINS))
