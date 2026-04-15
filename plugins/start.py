@@ -77,6 +77,7 @@ async def start_command(client: Client, message: Message):
             current_date = date.today()
             daily_limit = res["daily_limit"]
             new_user = res["new_user"]
+            end_premium = res["end_premium"]
 
             # ============================================
             # LOGIKA PREMIUM:
@@ -91,17 +92,14 @@ async def start_command(client: Client, message: Message):
             else:
                 # User NON-PREMIUM → cek daily limit
                 if new_user == "yes":
-                    # User baru pertama kali → kasih akses + tandai bukan new user lagi
                     messages = await get_messages(client, ids)
                     await update_new_user(id)
 
                 elif last_access_date < current_date:
-                    # Hari baru → reset daily limit
                     messages = await get_messages(client, ids)
                     await reset_daily_limit(id)
 
                 elif daily_limit <= 0:
-                    # Limit habis → tampilkan pesan + tombol premium
                     premium_url = PREMIUM_LINK if PREMIUM_LINK else f"https://t.me/{client.username}"
                     buttons = InlineKeyboardMarkup(
                         [
@@ -123,7 +121,6 @@ async def start_command(client: Client, message: Message):
                     return
 
                 else:
-                    # Masih ada limit → kasih akses
                     messages = await get_messages(client, ids)
 
         except Exception as e:
@@ -163,6 +160,66 @@ async def start_command(client: Client, message: Message):
                     )
                 except Exception:
                     pass
+
+            # ============================================================
+            # PESAN INFO SETELAH SEMUA FILE TERKIRIM
+            # ============================================================
+            try:
+                if user_premium == "yes":
+                    # --- USER PREMIUM ---
+                    if end_premium:
+                        try:
+                            end_date = datetime.strptime(end_premium, '%Y-%m-%d').date()
+                            sisa_hari = (end_date - date.today()).days
+                            status_text = (
+                                f"✅ Kamu adalah user <b>Premium</b>! Akses tanpa batas.\n"
+                                f"📅 Sisa premium kamu: <b>{sisa_hari} hari</b> (berakhir {end_premium})"
+                            )
+                        except ValueError:
+                            status_text = (
+                                f"✅ Kamu adalah user <b>Premium</b>! Akses tanpa batas."
+                            )
+                    else:
+                        # end_premium kosong → belum diisi admin
+                        status_text = (
+                            f"✅ Kamu adalah user <b>Premium</b>! Akses tanpa batas."
+                        )
+
+                    await message.reply_text(
+                        text=status_text,
+                        parse_mode=ParseMode.HTML,
+                        quote=False
+                    )
+
+                else:
+                    # --- USER NON-PREMIUM ---
+                    updated_res = await find_user(id)
+                    remaining_limit = updated_res.get("daily_limit", 0)
+
+                    premium_url = PREMIUM_LINK if PREMIUM_LINK else f"https://t.me/{client.username}"
+
+                    status_text = (
+                        f"📊 Daily limit kamu sisa <b>{remaining_limit}</b> file hari ini.\n"
+                        f"🌟 Join Premium untuk akses tanpa batas! 👇"
+                    )
+
+                    buttons = InlineKeyboardMarkup(
+                        [
+                            [InlineKeyboardButton("⭐ JOIN PREMIUM", url=premium_url)]
+                        ]
+                    )
+
+                    await message.reply_text(
+                        text=status_text,
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=buttons,
+                        quote=False
+                    )
+
+            except Exception as e:
+                print(f"Error saat mengirim info limit: {e}")
+                pass
+
         return
     else:
         reply_markup = InlineKeyboardMarkup(

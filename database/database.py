@@ -21,11 +21,12 @@ async def add_user(user_id: int, username):
     user_data.insert_one({
         '_id': user_id,
         'username': username,
-        'user_premium': 'no',          # "no" = non-premium, "yes" = premium
+        'user_premium': 'no',
         'join_date': current_date.strftime("%Y-%m-%d"),
         'new_user': 'yes',
         'last_access': current_date.strftime("%Y-%m-%d"),
-        'daily_limit': DAILY_LIMIT_NEW_USER,   # ← dari .env
+        'daily_limit': DAILY_LIMIT_NEW_USER,
+        'end_premium': '',
     })
     return
 
@@ -37,7 +38,7 @@ async def reset_daily_limit(user_id: int):
             {"_id": user_id},
             {"$set": {
                 "last_access": current_date.strftime("%Y-%m-%d"),
-                "daily_limit": DAILY_LIMIT_RESET    # ← dari .env
+                "daily_limit": DAILY_LIMIT_RESET
             }}
         )
         if result.matched_count == 1:
@@ -82,14 +83,49 @@ async def update_new_user(user_id: int):
 async def find_user(user_id: int):
     result = user_data.find_one({"_id": user_id})
     if result:
+        # Cek apakah field end_premium sudah ada di dokumen
+        if 'end_premium' not in result:
+            user_data.update_one(
+                {"_id": user_id},
+                {"$set": {"end_premium": ""}}
+            )
+            end_premium = ""
+        else:
+            end_premium = result['end_premium']
+
+        user_premium = result['user_premium']
+
+        # ============================================
+        # AUTO DOWNGRADE: cek apakah premium sudah expired
+        # Jika user_premium "yes" dan end_premium sudah lewat → downgrade
+        # ============================================
+        if user_premium == "yes" and end_premium:
+            try:
+                end_date = datetime.datetime.strptime(end_premium, '%Y-%m-%d').date()
+                if end_date < datetime.date.today():
+                    # Premium expired → downgrade ke non-premium
+                    user_data.update_one(
+                        {"_id": user_id},
+                        {"$set": {
+                            "user_premium": "no",
+                            "daily_limit": DAILY_LIMIT_RESET,
+                            "last_access": datetime.date.today().strftime("%Y-%m-%d"),
+                        }}
+                    )
+                    user_premium = "no"
+                    end_premium = end_premium  # tetap simpan tanggal lama sebagai riwayat
+            except ValueError:
+                pass
+
         result = {
             '_id': result['_id'],
             'username': result['username'],
-            'user_premium': result['user_premium'],
+            'user_premium': user_premium,
             'join_date': result['join_date'],
             'last_access': result['last_access'],
             'new_user': result['new_user'],
-            'daily_limit': result['daily_limit']
+            'daily_limit': result['daily_limit'] if user_premium == "yes" or result['user_premium'] == user_premium else DAILY_LIMIT_RESET,
+            'end_premium': end_premium,
         }
     else:
         result = {"status": "Not Found"}

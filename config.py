@@ -44,7 +44,7 @@ if OWNER_ID == 0:
 # ============================
 
 # Port
-PORT = os.environ.get("PORT", "8080")
+PORT = os.environ.get("PORT", "")
 
 # Database
 DB_URI = os.environ.get("DATABASE_URL", "mongodb://localhost:27017")
